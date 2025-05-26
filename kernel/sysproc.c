@@ -91,3 +91,76 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+uint64
+sys_waitpid(void) {
+    int pid;
+    uint64 status_addr;
+    int options;
+
+    argint(0, &pid);
+    argaddr(1, &status_addr);
+    argint(2, &options);
+    
+    return waitpid(pid, status_addr, options);
+}
+
+uint64
+sys_sigraise(void)
+{
+  int pid;
+  int SIG;
+  argint(0, &pid);
+  argint(1, &SIG);
+  return sigraise(pid,SIG); 
+}
+
+uint64 sys_settickets(void) {
+    int tickets;
+    int pid;
+
+    // Retrieve the arguments from user space
+    argint(0, &pid);
+    argint(1, &tickets);
+    
+
+    // Validate the ticket count
+    if (tickets < 1) {
+        return -1; // Invalid ticket count
+    }
+
+    return settickets(pid,tickets);
+}
+
+#include "semaphore2.h"
+uint64 sys_sem2init(void) {
+
+    uint64 addr;
+    int icount;
+    argaddr(0, &addr);
+    argint(1,&icount);
+
+    sem2init(addr, icount);
+    return 0; // Success
+
+}
+
+uint64 sys_sem2_wait(void) {
+
+    uint64 sem_id;
+    argaddr(0, &sem_id);
+    sem2_wait(sem_id);
+    return 0; // Success
+
+}
+
+uint64 sys_sem2_post(void) {
+
+    uint64 sem_id;
+    argaddr(0, &sem_id);
+    sem2_post(sem_id);
+    return 0; // Success
+
+}
+
+

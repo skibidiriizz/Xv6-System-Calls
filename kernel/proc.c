@@ -5,6 +5,10 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
+#include <time.h> // Include for time()
+
+
+
 
 struct cpu cpus[NCPU];
 
@@ -110,7 +114,7 @@ static struct proc*
 allocproc(void)
 {
   struct proc *p;
-
+  
   for(p = proc; p < &proc[NPROC]; p++) {
     acquire(&p->lock);
     if(p->state == UNUSED) {
@@ -124,7 +128,6 @@ allocproc(void)
 found:
   p->pid = allocpid();
   p->state = USED;
-
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
     freeproc(p);
@@ -133,7 +136,9 @@ found:
   }
 
   // An empty user page table.
+  
   p->pagetable = proc_pagetable(p);
+  // printf("allocproc: here0\n");  //issue in proc_pagetable
   if(p->pagetable == 0){
     freeproc(p);
     release(&p->lock);
@@ -155,6 +160,7 @@ found:
 static void
 freeproc(struct proc *p)
 {
+  
   if(p->trapframe)
     kfree((void*)p->trapframe);
   p->trapframe = 0;
@@ -171,28 +177,30 @@ freeproc(struct proc *p)
   p->state = UNUSED;
 }
 
-// Create a user page table for a given process, with no user memory,
-// but with trampoline and trapframe pages.
-pagetable_t
-proc_pagetable(struct proc *p)
-{
-  pagetable_t pagetable;
+  // Create a user page table for a given process, with no user memory,
+  // but with trampoline and trapframe pages.
+  pagetable_t
+  proc_pagetable(struct proc *p)
+  {
+    
+    pagetable_t pagetable;
 
-  // An empty page table.
-  pagetable = uvmcreate();
-  if(pagetable == 0)
-    return 0;
-
-  // map the trampoline code (for system call return)
-  // at the highest user virtual address.
-  // only the supervisor uses it, on the way
-  // to/from user space, so not PTE_U.
-  if(mappages(pagetable, TRAMPOLINE, PGSIZE,
-              (uint64)trampoline, PTE_R | PTE_X) < 0){
-    uvmfree(pagetable, 0);
-    return 0;
-  }
-
+    // An empty page table.
+    pagetable = uvmcreate();
+    if(pagetable == 0)
+      return 0;
+    
+    // map the trampoline code (for system call return)
+    // at the highest user virtual address.
+    // only the supervisor uses it, on the way
+    // to/from user space, so not PTE_U.
+    if(mappages(pagetable, TRAMPOLINE, PGSIZE,
+                (uint64)trampoline, PTE_R | PTE_X) < 0){
+      uvmfree(pagetable, 0);
+      return 0;
+    }
+    
+    
   // map the trapframe page just below the trampoline page, for
   // trampoline.S.
   if(mappages(pagetable, TRAPFRAME, PGSIZE,
@@ -201,7 +209,6 @@ proc_pagetable(struct proc *p)
     uvmfree(pagetable, 0);
     return 0;
   }
-
   return pagetable;
 }
 
@@ -250,6 +257,7 @@ userinit(void)
   p->cwd = namei("/");
 
   p->state = RUNNABLE;
+  p->tickets = 10;
 
   release(&p->lock);
 }
@@ -279,15 +287,16 @@ growproc(int n)
 int
 fork(void)
 {
+  
   int i, pid;
   struct proc *np;
   struct proc *p = myproc();
-
+  
   // Allocate process.
   if((np = allocproc()) == 0){
     return -1;
   }
-
+  
   // Copy user memory from parent to child.
   if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0){
     freeproc(np);
@@ -295,7 +304,7 @@ fork(void)
     return -1;
   }
   np->sz = p->sz;
-
+  // printf("fork:seraching done\n");
   // copy saved user registers.
   *(np->trapframe) = *(p->trapframe);
 
@@ -320,7 +329,9 @@ fork(void)
 
   acquire(&np->lock);
   np->state = RUNNABLE;
+  np->tickets = p->tickets;
   release(&np->lock);
+  
 
   return pid;
 }
@@ -434,6 +445,22 @@ wait(uint64 addr)
   }
 }
 
+
+// Function to generate a pseudo-random number
+int rand() {
+    static uint seed = 123456789;
+    // Linear Congruential Generator parameters
+    const uint a = 1664525; // Multiplier
+    const uint c = 1013904223; // Increment
+    const uint m = 0xFFFFFFFF; // Modulus (2^32)
+
+    // Update the seed
+    seed = (a * seed + c) % m;
+
+    // Return the generated pseudo-random number
+    return seed;
+}
+
 // Per-CPU process scheduler.
 // Each CPU calls scheduler() after setting itself up.
 // Scheduler never returns.  It loops, doing:
@@ -454,24 +481,45 @@ scheduler(void)
     // processes are waiting.
     intr_on();
 
+    int tickets = 0;
+    for(p = proc; p < &proc[NPROC]; p++) {
+      acquire(&p->lock);
+      if(p->state == RUNNABLE) {
+        tickets += p->tickets;
+      }
+      release(&p->lock);
+    }
+    
+
+    int threshold = rand()%tickets;
+    int cTickets = 0;
     int found = 0;
     for(p = proc; p < &proc[NPROC]; p++) {
       acquire(&p->lock);
       if(p->state == RUNNABLE) {
-        // Switch to chosen process.  It is the process's job
-        // to release its lock and then reacquire it
-        // before jumping back to us.
-        p->state = RUNNING;
-        c->proc = p;
-        swtch(&c->context, &p->context);
+        if (cTickets >= threshold)
+        {
+            // Switch to chosen process.  It is the process's job
+            // to release its lock and then reacquire it
+            // before jumping back to us.
+            p->state = RUNNING;
+            c->proc = p;
+            swtch(&c->context, &p->context);
 
-        // Process is done running for now.
-        // It should have changed its p->state before coming back.
-        c->proc = 0;
-        found = 1;
+            // Process is done running for now.
+            // It should have changed its p->state before coming back.
+            c->proc = 0;
+            found = 1;
+        }
+        else
+        {
+          cTickets += p->tickets;
+        }
+        
       }
       release(&p->lock);
     }
+
     if(found == 0) {
       // nothing to run; stop running on this core until an interrupt.
       intr_on();
@@ -692,4 +740,259 @@ procdump(void)
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
   }
+}
+
+
+// mine
+#define WNOHANG 1 
+int waitpid(int pid, uint64 addr, int options) {
+    struct proc *p;
+    int found;
+    int status;
+    struct proc *curproc = myproc();
+    
+    acquire(&wait_lock);
+
+    for (;;) {
+        // Scan through the process table looking for a child with the specified PID.
+        found = 0;
+        for (p = proc; p < &proc[NPROC]; p++) {
+            if (p->pid == pid && p->parent == curproc) {
+                found = 1;
+                if (p->state == ZOMBIE) {
+                    // Get the child's exit status
+                    status = p->xstate;
+                    
+                    // Copy the status to user space safely
+                    if (addr != 0 && copyout(curproc->pagetable, addr, (char *)&status, sizeof(status)) < 0) {
+                        release(&wait_lock);
+                        return -1;
+                    }
+                    
+                    freeproc(p);
+                    release(&wait_lock);
+                    return pid;
+                }
+                // If child exists but isn't zombie, and WNOHANG is set,
+                // return 0 immediately instead of waiting
+                else if (options & WNOHANG) {
+                    release(&wait_lock);
+                    return 0;
+                }
+            }
+        }
+
+        // If no matching child found or the process was killed, return -1.
+        if (!found || curproc->killed) {
+            release(&wait_lock);
+            return -1;
+        }
+
+        // If WNOHANG is set and we didn't find a zombie child, return 0
+        if (options & WNOHANG) {
+            release(&wait_lock);
+            return 0;
+        }
+
+        // Wait for a state change
+        sleep(curproc, &wait_lock);
+    }
+}
+
+int sigstop(int pid)
+{
+    struct proc *p;
+
+    for(p = proc; p < &proc[NPROC]; p++){
+        acquire(&p->lock);
+        if(p->pid == pid){
+            // Set process state to STOPPED or SLEEPING (suspend execution).
+            p->state = SLEEPING;  // or STOPPED if you have a STOPPED state.
+            release(&p->lock);
+            return 0;
+        }
+        release(&p->lock);
+    }
+    return -1;
+}
+
+int sigcont(int pid)
+{
+    struct proc *p;
+
+    for(p = proc; p < &proc[NPROC]; p++){
+        acquire(&p->lock);
+        if(p->pid == pid){
+            // Set process state to RUNNABLE, allowing it to resume execution.
+            // if(p->state == SLEEPING || p->state == STOPPED) 
+            if(p->state == SLEEPING) 
+            
+            {
+                p->state = RUNNABLE;
+            }
+            release(&p->lock);
+            return 0;
+        }
+        release(&p->lock);
+    }
+    return -1;
+}
+
+
+int sigterm(int pid)
+{
+  struct proc *p;
+
+    for(p = proc; p < &proc[NPROC]; p++){
+        acquire(&p->lock);
+        if(p->pid == pid){
+            // Set process state to ZOMBIE, signaling termination.
+            p->state = ZOMBIE;
+            release(&p->lock);
+            return 0;
+        }
+        release(&p->lock);
+    }
+    return -1;
+}
+
+int sigraise(int pid, sig_t SIG)
+{
+
+  if (SIG == SIG_TERM)
+  {
+    return sigterm(pid);
+  }
+  else if(SIG == SIG_STOP)
+  {
+
+    return sigstop(pid);
+  }
+  else if (SIG == SIG_CONT)
+  {
+    return sigcont(pid);
+  }
+  else if (SIG == SIG_KILL)
+  {
+    return kill(pid);
+  }
+  return -1;
+}
+
+sighandler_t setsignal(sig_t SIG, sighandler_t handle)
+{
+  return (void*) 1;
+}
+
+
+int settickets(int pid, int tickets) {
+    struct proc *p;
+
+    for (p = proc; p < &proc[NPROC]; p++) {
+        acquire(&p->lock);
+        if (p->pid == pid) {
+            p->tickets = tickets; // Update the ticket count
+            release(&p->lock);
+            return 0; // Success
+        }
+        release(&p->lock);
+    }
+    return -1; // Process not found
+}
+
+#include "semaphore2.h"
+struct spinlock doing_sem;  // mutex for sem operations
+
+void
+sem2init(uint64 addr, int initial_count)
+{
+  
+  initlock(&doing_sem, "doing_sem");
+
+  acquire(&doing_sem);
+  
+
+  struct semaphore2 sem;
+
+  initlock(&sem.lock, "semaphore");
+  acquire(&sem.lock);
+
+  sem.count = initial_count;
+  for(int i = 0; i < 64; i++){
+    sem.waiters[i].valid = 0;
+  }
+  
+  release(&sem.lock);
+
+  copyout(myproc()->pagetable, addr, (char *)&sem, sizeof(sem));
+
+  release(&doing_sem);
+
+}
+
+void
+sem2_wait(uint64 addr)
+{
+
+  acquire(&doing_sem);
+
+  struct semaphore2 sem;
+  copyin(myproc()->pagetable, (char*) &sem, addr, sizeof(sem));
+  
+  acquire(&sem.lock);
+  while(sem.count <= 0){
+    // Find free slot in waiters array
+    int idx = -1;
+    for(int i = 0; i < 64; i++){
+      if(!sem.waiters[i].valid){
+        idx = i;
+        break;
+      }
+    }
+    if(idx == -1)
+      panic("sem_wait: no free waiter slots");
+
+    // Add current process to waiters
+    sem.waiters[idx].proc = myproc();
+    sem.waiters[idx].valid = 1;
+    
+    // Release lock and sleep
+    sleep(&sem.waiters[idx], &sem.lock);
+
+    // When we wake up, check if we still need to wait
+  }
+  sem.count--;
+  
+  release(&sem.lock);
+  copyout(myproc()->pagetable, addr, (char *)&sem, sizeof(sem));
+
+  release(&doing_sem);
+
+}
+
+void 
+sem2_post(uint64 addr)
+{
+  acquire(&doing_sem);
+
+  struct semaphore2 sem;
+  copyin(myproc()->pagetable, (char*) &sem, addr, sizeof(sem));
+
+  acquire(&sem.lock);
+  sem.count++;
+  printf("increased %d at %ld\n", sem.count, addr);
+  // Wake up one waiter if any
+  for(int i = 0; i < 64; i++){
+    if(sem.waiters[i].valid){
+      sem.waiters[i].valid = 0;
+      wakeup(&sem.waiters[i]);
+      break;
+    }
+  }
+  release(&sem.lock);
+  copyout(myproc()->pagetable, addr, (char *)&sem, sizeof(sem));
+
+
+  release(&doing_sem);
+
 }

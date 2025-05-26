@@ -8,6 +8,8 @@ struct spinlock;
 struct sleeplock;
 struct stat;
 struct superblock;
+// semaphore def
+struct semaphore2;
 
 // bio.c
 void            binit(void);
@@ -133,7 +135,7 @@ int             strlen(const char*);
 int             strncmp(const char*, const char*, uint);
 char*           strncpy(char*, const char*, int);
 
-// syscall.c
+// call.c
 void            argint(int, int*);
 int             argstr(int, char*, int);
 void            argaddr(int, uint64 *);
@@ -185,5 +187,20 @@ void            virtio_disk_init(void);
 void            virtio_disk_rw(struct buf *, int);
 void            virtio_disk_intr(void);
 
+
 // number of elements in fixed-size array
 #define NELEM(x) (sizeof(x)/sizeof((x)[0]))
+
+
+//mine 
+
+int             waitpid(int pid, uint64 addr, int options);
+#include "kernel/sig.h"
+int             sigraise(int, sig_t );
+
+int             settickets(int pid, int tickets);
+
+
+void            sem2init(uint64 addr, int);
+void            sem2_wait(uint64 addr);
+void            sem2_post(uint64 addr);

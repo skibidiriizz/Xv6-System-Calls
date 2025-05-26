@@ -102,6 +102,22 @@ extern uint64 sys_link(void);
 extern uint64 sys_mkdir(void);
 extern uint64 sys_close(void);
 
+//mine
+extern uint64 sys_waitpid(void);
+extern uint64 sys_sigraise(void);
+
+extern uint64 sys_shmget(void);
+extern uint64 sys_shmat(void);
+extern uint64 sys_shmdt(void);
+extern uint64 sys_shmctl(void);
+
+extern uint64 sys_settickets(void);
+
+extern uint64 sys_sem2init(void);
+extern uint64 sys_sem2_wait(void);
+extern uint64 sys_sem2_post(void);
+
+
 // An array mapping syscall numbers from syscall.h
 // to the function that handles the system call.
 static uint64 (*syscalls[])(void) = {
@@ -126,7 +142,20 @@ static uint64 (*syscalls[])(void) = {
 [SYS_link]    sys_link,
 [SYS_mkdir]   sys_mkdir,
 [SYS_close]   sys_close,
+[SYS_waitpid]    sys_waitpid,
+[SYS_sigraise]    sys_sigraise,
+[SYS_shmget]  sys_shmget,
+[SYS_shmat]   sys_shmat,
+[SYS_shmdt]   sys_shmdt,
+[SYS_shmctl]  sys_shmctl,
+[SYS_settickets] sys_settickets,
+[SYS_sem2init] sys_sem2init,
+[SYS_sem2_wait] sys_sem2_wait,
+[SYS_sem2_post] sys_sem2_post, 
+
 };
+
+
 
 void
 syscall(void)
@@ -145,3 +174,4 @@ syscall(void)
     p->trapframe->a0 = -1;
   }
 }
+

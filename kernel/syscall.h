@@ -20,3 +20,13 @@
 #define SYS_link   19
 #define SYS_mkdir  20
 #define SYS_close  21
+#define SYS_waitpid  22
+#define SYS_sigraise 23
+#define SYS_shmget  24
+#define SYS_shmat   25
+#define SYS_shmdt   26
+#define SYS_shmctl  27
+#define SYS_settickets 28
+#define SYS_sem2init 29
+#define SYS_sem2_wait 30
+#define SYS_sem2_post 31

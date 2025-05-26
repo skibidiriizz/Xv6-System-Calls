@@ -22,6 +22,24 @@ int getpid(void);
 char* sbrk(int);
 int sleep(int);
 int uptime(void);
+// mine
+int waitpid(int,int*,int);
+int sigraise(int,int);
+// scheduler
+int settickets(int pid, int tickets);
+
+//shm
+int shmget(int key, int size, int flags);
+void* shmat(int shmid, void* addr, int flags);
+int shmdt(void* addr);
+int shmctl(int shmid, int cmd, void* buf);
+
+// sem
+#include "kernel/semaphore2.h"
+void sem2init(uint64 addr, int initial_count);
+void sem2_wait(uint64 addr);
+void sem2_post(uint64 addr);
+
 
 // ulib.c
 int stat(const char*, struct stat*);
@@ -41,3 +59,5 @@ void *memcpy(void *, const void *, uint);
 // umalloc.c
 void* malloc(uint);
 void free(void*);
+
+
